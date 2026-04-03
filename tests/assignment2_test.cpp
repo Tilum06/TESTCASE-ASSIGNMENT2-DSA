@@ -853,25 +853,111 @@ static void suite_stress() {
 }
 
 // ===================== main =====================
-int main() {
-    RUN_TEST("Song", suite_song_basic);
-    RUN_TEST("AVL Basic", suite_avl_basic);
-    RUN_TEST("AVL Rotations & Height", suite_avl_rotations_and_height);
-#ifdef USE_THREADED_AVL
-    RUN_TEST("ThreadedAVL Basic", suite_threaded_avl_basic);
-    RUN_TEST("ThreadedAVL Erase & Threads", suite_threaded_avl_erase_and_threads);
-#endif
-    RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
-    RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
-    RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
-    RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
-    RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
-    RUN_TEST("Stress", suite_stress);
+int main(int argc, char* argv[]) {
+    string mode = (argc > 1) ? argv[1] : "all";
 
-    cout << "\n" << C_CYAN << "===== SUMMARY =====" << C_RESET << "\n";
-    cout << C_GREEN << "PASS: " << g_pass << C_RESET << "\n";
-    if (g_fail == 0) cout << C_GREEN << "FAIL: 0" << C_RESET << "\n";
-    else cout << C_RED << "FAIL: " << g_fail << C_RESET << "\n";
+    auto print_summary = []() {
+        cout << "\n" << C_CYAN << "===== SUMMARY =====" << C_RESET << "\n";
+        cout << C_GREEN << "PASS: " << g_pass << C_RESET << "\n";
+        if (g_fail == 0) cout << C_GREEN << "FAIL: 0" << C_RESET << "\n";
+        else cout << C_RED << "FAIL: " << g_fail << C_RESET << "\n";
+    };
 
+    if (mode == "all") {
+        RUN_TEST("Song", suite_song_basic);
+        RUN_TEST("AVL Basic", suite_avl_basic);
+        RUN_TEST("AVL Rotations & Height", suite_avl_rotations_and_height);
+    #ifdef USE_THREADED_AVL
+        RUN_TEST("ThreadedAVL Basic", suite_threaded_avl_basic);
+        RUN_TEST("ThreadedAVL Erase & Threads", suite_threaded_avl_erase_and_threads);
+    #endif
+        RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
+        RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
+        RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
+        RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
+        RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+        RUN_TEST("Stress", suite_stress);
+    }
+    else if (mode == "song") {
+        RUN_TEST("Song", suite_song_basic);
+    }
+    else if (mode == "avl") {
+        RUN_TEST("AVL Basic", suite_avl_basic);
+        RUN_TEST("AVL Rotations & Height", suite_avl_rotations_and_height);
+    }
+    else if (mode == "threaded") {
+    #ifdef USE_THREADED_AVL
+        RUN_TEST("ThreadedAVL Basic", suite_threaded_avl_basic);
+        RUN_TEST("ThreadedAVL Erase & Threads", suite_threaded_avl_erase_and_threads);
+    #else
+        cout << "ThreadedAVL not enabled. Rebuild with -DUSE_THREADED_AVL\n";
+    #endif
+    }
+    else if (mode == "playlist") {
+        RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
+        RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
+        RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
+        RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
+        RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+    }
+    else if (mode == "stress") {
+        RUN_TEST("Stress", suite_stress);
+    }
+
+    // More detailed modes for debugging specific functionality.
+    else if (mode == "avl-basic") {
+        RUN_TEST("AVL Basic", suite_avl_basic);
+    }
+    else if (mode == "avl-rotation") {
+        RUN_TEST("AVL Rotations & Height", suite_avl_rotations_and_height);
+    }
+    else if (mode == "playlist-order") {
+        RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
+    }
+    else if (mode == "playlist-nav") {
+        RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
+    }
+    else if (mode == "playlist-remove-current") {
+        RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
+    }
+    else if (mode == "playlist-score") {
+        RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
+    }
+    else if (mode == "playlist-jump") {
+        RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+    }
+    else if (mode == "help") {
+    cout << "Usage:\n";
+    cout << "  ./test_basic [mode]       (AVL mode)\n";
+    cout << "  ./test_threaded [mode]    (ThreadedAVL mode)\n\n";
+
+    cout << "Execution modes (runtime):\n";
+    cout << "  all (default)   - run all tests\n";
+    cout << "  song            - test Song class\n";
+    cout << "  avl             - test AVL (insert, delete, balance)\n";
+    cout << "  playlist        - test Playlist functionality\n";
+    cout << "  stress          - run stress tests\n";
+    cout << "  threaded        - test ThreadedAVL (only in threaded build)\n\n";
+
+    cout << "Detailed modes (for debugging):\n";
+    cout << "  avl-basic\n";
+    cout << "  avl-rotation\n";
+    cout << "  playlist-order\n";
+    cout << "  playlist-nav\n";
+    cout << "  playlist-remove-current\n";
+    cout << "  playlist-score\n";
+    cout << "  playlist-jump\n\n";
+
+    cout << "Notes:\n";
+    cout << "  - test_basic uses AVL implementation\n";
+    cout << "  - test_threaded enables ThreadedAVL (compile with -DUSE_THREADED_AVL)\n";
+    cout << "  - 'threaded' mode only works in test_threaded\n";
+    }
+    else {
+        cout << "Unknown mode: " << mode << "\n";
+        cout << "Use './test_basic help' or './test_threaded help'\n";
+    }
+
+    print_summary();
     return (g_fail == 0) ? 0 : 1;
 }
