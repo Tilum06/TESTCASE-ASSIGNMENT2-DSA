@@ -1,3 +1,12 @@
+# 🧪 DSA Assignment 2 Test Suite (HCMUT - Semester 252)
+
+A comprehensive test suite for DSA Assignment 2.
+
+This project supports **multiple execution modes** for flexible and targeted testing.
+
+---
+
+
 ## 📌 Setup
 
 Replace the provided files with your implementation:
@@ -21,18 +30,45 @@ g++ -std=c++17 -DUSE_THREADED_AVL -I include tests/assignment2_test.cpp src/Play
 
 ## ▶️ Run
 
-### Basic AVL mode:
+### 🔹 Run all tests
+
 ```bash
 ./test_basic
-```
-
-### Threaded mode (bonus):
-```bash
 ./test_threaded
 ```
 
-## 🧪 Testcase Guide
 
+### 🔹 Run by category
+
+```bash
+./test_basic [mode]        # AVL mode
+./test_threaded [mode]     # ThreadedAVL mode
+```
+
+#### Available modes:
+
+| Mode        | Description |
+|------------|------------|
+| `all` (default) | Run all tests |
+| `song`     | Test `Song` class |
+| `avl`      | Test AVL (insert, delete, balance) |
+| `playlist` | Test Playlist functionality |
+| `stress`   | Run stress tests |
+| `threaded` | Test ThreadedAVL *(only for `test_threaded`)* |
+
+### 🔹 Run specific test suites
+
+You can also run individual test suites:
+
+- `avl-basic`
+- `avl-rotation`
+- `playlist-order`
+- `playlist-nav`
+- `playlist-remove-current`
+- `playlist-score`
+- `playlist-jump`
+
+## 🧪 Testcase Guide
 This test suite validates both **correct output and internal behavior** of your implementation.
 
 Each test provides:
