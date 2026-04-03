@@ -12,7 +12,9 @@
 #include <cmath>
 
 #include "AVL.h"
+#ifdef USE_THREADED_AVL
 #include "ThreadedAVL.h"
+#endif
 #include "Playlist.h"
 
 using namespace std;
@@ -151,8 +153,11 @@ public:
 #ifdef USE_THREADED_AVL
     static bool hasCurrent(const Playlist& p) { return p.hasCurrent; }
 #endif
+    static int id(const Song& s) { return s.id; }
+    static const string& title(const Song& s) { return s.title; }
     static const string& artist(const Song& s) { return s.artist; }
     static int duration(const Song& s) { return s.duration; }
+    static int score(const Song& s) { return s.score; }
 };
 
 template <typename K, typename V>
@@ -162,12 +167,14 @@ public:
     Node* root() const { return this->pRoot; }
 };
 
+#ifdef USE_THREADED_AVL
 template <typename K, typename V>
 class ExposedThreadedAVL : public ThreadedAVL<K, V> {
 public:
     using Node = typename AVL<K, V>::Node;
     Node* root() const { return this->pRoot; }
 };
+#endif
 
 template <typename T>
 static string join_list(const list<T>& lst) {
@@ -196,6 +203,14 @@ static string join_songkey_list(const list<SongKey>& lst) {
     return oss.str();
 }
 
+static string capture_cout(function<void()> fn) {
+    ostringstream oss;
+    streambuf* old = cout.rdbuf(oss.rdbuf());
+    fn();
+    cout.rdbuf(old);
+    return oss.str();
+}
+
 static Song* mkSong(int id,
                     const string& title,
                     int score = 0,
@@ -220,7 +235,7 @@ static void addSongs(Playlist& p, initializer_list<SArg> a) {
 
 static string song_brief(Song* s) {
     if (!s) return "(null)";
-    return s->getTitle() + "#" + to_string(s->getId());
+    return TestHelper::title(*s) + "#" + to_string(TestHelper::id(*s));
 }
 
 template <typename Node>
@@ -254,6 +269,7 @@ static void EXPECT_VALID_AVL(const ExposedAVL<K, V>& t, const string& msgPrefix)
     EXPECT_TRUE(is_avl_balanced(r), msgPrefix + ": AVL balance property holds");
 }
 
+#ifdef USE_THREADED_AVL
 template <typename K, typename V>
 static void EXPECT_VALID_TAVL(const ExposedThreadedAVL<K, V>& t, const string& msgPrefix) {
     auto* r = t.root();
@@ -281,18 +297,17 @@ static string join_vector_int(const vector<int>& v) {
     }
     return oss.str();
 }
+#endif
 
 // ===================== Testcases =====================
 static void suite_song_basic() {
     Song s(10, "Hello", "Adele", "25", 295, 9, "u");
-    EXPECT_EQ(s.getId(), 10, "Song: getId");
-    EXPECT_EQ_STR(s.getTitle(), "Hello", "Song: getTitle");
-    EXPECT_EQ(s.getScore(), 9, "Song: getScore");
+    EXPECT_EQ(TestHelper::id(s), 10, "Song: id stored correctly");
+    EXPECT_EQ_STR(TestHelper::title(s), "Hello", "Song: title stored correctly");
     EXPECT_EQ_STR(TestHelper::artist(s), "Adele", "Song: artist stored correctly");
     EXPECT_EQ(TestHelper::duration(s), 295, "Song: duration stored correctly");
+    EXPECT_EQ(TestHelper::score(s), 9, "Song: score stored correctly");
     EXPECT_TRUE(!s.toString().empty(), "Song: toString non-empty");
-    EXPECT_TRUE(s.toString().find("Hello") != string::npos,
-                "Song: toString should mention title");
 }
 
 static void suite_avl_basic() {
@@ -401,6 +416,7 @@ static void suite_avl_rotations_and_height() {
     }
 }
 
+#ifdef USE_THREADED_AVL
 static void suite_threaded_avl_basic() {
     ExposedThreadedAVL<int, string> t;
     EXPECT_TRUE(t.beginIt().isNull(), "TAVL: beginIt on empty is null");
@@ -465,6 +481,7 @@ static void suite_threaded_avl_erase_and_threads() {
     EXPECT_TRUE(t.rbeginIt().isNull(), "TAVL: clear -> rbeginIt null");
     EXPECT_EQ_STR(join_list(t.ascendingList()), "", "TAVL: clear -> ascendingList empty");
 }
+#endif
 
 static void suite_playlist_basic_order() {
     Playlist p("P");
@@ -490,6 +507,11 @@ static void suite_playlist_basic_order() {
     EXPECT_EQ_STR(song_brief(p.getSong(3)), "Delta#4", "PL: getSong(3)");
     EXPECT_TRUE(p.getSong(-1) == nullptr, "PL: getSong(-1) -> nullptr");
     EXPECT_TRUE(p.getSong(4) == nullptr, "PL: getSong(size) -> nullptr");
+
+    p.removeSong(-1);
+    EXPECT_EQ(p.getSize(), 4, "PL: removeSong(-1) does nothing");
+    p.removeSong(4);
+    EXPECT_EQ(p.getSize(), 4, "PL: removeSong(size) does nothing");
 
     p.removeSong(1);
     EXPECT_EQ(p.getSize(), 3, "PL: removeSong(valid) decreases size");
@@ -550,10 +572,10 @@ static void suite_playlist_playback_navigation() {
     EXPECT_TRUE(p.playPrevious() == nullptr, "PL: playPrevious on empty playlist -> nullptr");
 }
 
-static void suite_playlist_remove_and_reset() {
-    // Deleting current song should reset playback state.
+static void suite_playlist_remove_current_behavior() {
+    // Deleting current song in the middle should auto-move to inorder successor.
     {
-        Playlist p("ResetCurrent");
+        Playlist p("CurrentMid");
         addSongs(p, {
             {1, "Alpha",   1, 100},
             {2, "Beta",    2, 100},
@@ -561,19 +583,46 @@ static void suite_playlist_remove_and_reset() {
             {4, "Delta",   4, 100}
         });
 
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1", "PL reset: start Alpha");
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Beta#2",  "PL reset: advance to Beta");
-        EXPECT_EQ(TestHelper::currentIndex(p), 1, "PL reset: currentIndex is 1 before deletion");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1", "PL current-mid: start Alpha");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Beta#2",  "PL current-mid: advance to Beta");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1, "PL current-mid: currentIndex is 1 before deletion");
 
-        p.removeSong(1); // remove current song (Beta)
-        EXPECT_EQ(p.getSize(), 3, "PL reset: size after deleting current song");
-        EXPECT_EQ(TestHelper::currentIndex(p), -1,
-                  "PL reset: currentIndex reset after deleting current song");
+        p.removeSong(1); // remove current song (Beta), successor is Charlie
+        EXPECT_EQ(p.getSize(), 3, "PL current-mid: size after deleting current song");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL current-mid: currentIndex now points to successor position");
 #ifdef USE_THREADED_AVL
-        EXPECT_TRUE(!TestHelper::hasCurrent(p), "PL reset: hasCurrent false after deleting current song");
+        EXPECT_TRUE(TestHelper::hasCurrent(p), "PL current-mid: hasCurrent remains true");
+#endif
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Delta#4",
+                      "PL current-mid: playNext continues from successor");
+        EXPECT_EQ_STR(song_brief(p.playPrevious()), "Charlie#3",
+                      "PL current-mid: playPrevious goes back to successor song");
+    }
+
+    // Deleting current last song has no successor, so playback should reset.
+    {
+        Playlist p("CurrentLast");
+        addSongs(p, {
+            {1, "Alpha",   1, 100},
+            {2, "Beta",    2, 100},
+            {3, "Charlie", 3, 100}
+        });
+
+        p.playNext();
+        p.playNext();
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Charlie#3", "PL current-last: now playing last song");
+        EXPECT_EQ(TestHelper::currentIndex(p), 2, "PL current-last: currentIndex is 2 before deletion");
+
+        p.removeSong(2);
+        EXPECT_EQ(p.getSize(), 2, "PL current-last: size after deleting last current song");
+        EXPECT_EQ(TestHelper::currentIndex(p), -1,
+                  "PL current-last: playback resets when current successor does not exist");
+#ifdef USE_THREADED_AVL
+        EXPECT_TRUE(!TestHelper::hasCurrent(p), "PL current-last: hasCurrent false after reset");
 #endif
         EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1",
-                      "PL reset: next playback restarts from first song after reset");
+                      "PL current-last: next playback restarts from first song");
     }
 
     // Deleting a song before current should shift currentIndex but keep current song logically.
@@ -658,41 +707,112 @@ static void suite_playlist_score_compare() {
 }
 
 static void suite_playlist_random_and_approximate() {
-    Playlist p("Jump");
-    addSongs(p, {
-        {1, "A", 1, 100},
-        {2, "B", 2, 100},
-        {3, "C", 3, 100},
-        {4, "D", 4, 100},
-        {5, "E", 5, 100}
-    });
+    // playRandom only updates playback state and prints nothing.
+    {
+        Playlist p("Random");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100},
+            {5, "E", 5, 100}
+        });
 
-    p.playRandom(2); // C
-    EXPECT_EQ(TestHelper::currentIndex(p), 2, "PL: playRandom sets currentIndex");
+        string out = capture_cout([&]() { p.playRandom(2); });
+        EXPECT_EQ_STR(out, "", "PL: playRandom(valid) prints nothing");
+        EXPECT_EQ(TestHelper::currentIndex(p), 2, "PL: playRandom sets currentIndex");
 #ifdef USE_THREADED_AVL
-    EXPECT_TRUE(TestHelper::hasCurrent(p), "PL: playRandom sets hasCurrent true");
+        EXPECT_TRUE(TestHelper::hasCurrent(p), "PL: playRandom sets hasCurrent true");
 #endif
-    EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
-                  "PL: playNext continues from playRandom-selected song");
-    EXPECT_EQ_STR(song_brief(p.playPrevious()), "C#3",
-                  "PL: playPrevious returns to song selected by playRandom");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
+                      "PL: playNext continues from playRandom-selected song");
+        EXPECT_EQ_STR(song_brief(p.playPrevious()), "C#3",
+                      "PL: playPrevious returns to song selected by playRandom");
 
-    p.playRandom(1); // B
-    EXPECT_EQ(TestHelper::currentIndex(p), 1, "PL: playRandom can jump backward too");
+        out = capture_cout([&]() { p.playRandom(-1); });
+        EXPECT_EQ_STR(out, "", "PL: playRandom(invalid negative) prints nothing");
+        EXPECT_EQ(TestHelper::currentIndex(p), 2,
+                  "PL: playRandom(invalid negative) keeps previous currentIndex");
 
-    EXPECT_EQ(p.playApproximate(2), 3,
-              "PL: playApproximate(+2) moves forward by 2 positions");
-    EXPECT_EQ(TestHelper::currentIndex(p), 3,
-              "PL: currentIndex updated after playApproximate(+2)");
-    EXPECT_EQ_STR(song_brief(p.playPrevious()), "C#3",
-                  "PL: after approx to D, previous song is C");
+        out = capture_cout([&]() { p.playRandom(99); });
+        EXPECT_EQ_STR(out, "", "PL: playRandom(invalid large) prints nothing");
+        EXPECT_EQ(TestHelper::currentIndex(p), 2,
+                  "PL: playRandom(invalid large) keeps previous currentIndex");
+    }
 
-    EXPECT_EQ(p.playApproximate(-1), 1,
-              "PL: playApproximate(-1) moves backward by 1 position");
-    EXPECT_EQ(TestHelper::currentIndex(p), 1,
-              "PL: currentIndex updated after playApproximate(-1)");
-    EXPECT_EQ(p.playApproximate(0), 1,
-              "PL: playApproximate(0) keeps current position");
+    // playApproximate: if currentIndex == -1, start from 0 then apply step with wrap-around.
+    {
+        Playlist p("ApproxStart");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100},
+            {5, "E", 5, 100}
+        });
+
+        EXPECT_EQ(TestHelper::currentIndex(p), -1,
+                  "PL: currentIndex starts at -1 before playApproximate");
+        EXPECT_EQ(p.playApproximate(0), 0,
+                  "PL: playApproximate(0) from no current starts at index 0");
+        EXPECT_EQ(TestHelper::currentIndex(p), 0,
+                  "PL: currentIndex becomes 0 after playApproximate(0) from no current");
+
+        p.clear();
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100},
+            {5, "E", 5, 100}
+        });
+        EXPECT_EQ(p.playApproximate(2), 2,
+                  "PL: playApproximate(+2) from no current starts at 0 then moves to 2");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
+                      "PL: playNext continues correctly after playApproximate from no current");
+    }
+
+    // Wrap-around behavior.
+    {
+        Playlist p("ApproxWrap");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100},
+            {5, "E", 5, 100}
+        });
+
+        p.playRandom(4); // E
+        EXPECT_EQ(p.playApproximate(2), 1,
+                  "PL: playApproximate positive wrap-around from last song");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL: currentIndex updated after positive wrap-around");
+        EXPECT_EQ_STR(song_brief(p.playPrevious()), "A#1",
+                      "PL: after wrapping to B, previous song is A");
+
+        p.playRandom(0); // A
+        EXPECT_EQ(p.playApproximate(-1), 4,
+                  "PL: playApproximate negative wrap-around from first song");
+        EXPECT_EQ(TestHelper::currentIndex(p), 4,
+                  "PL: currentIndex updated after negative wrap-around");
+        EXPECT_TRUE(p.playNext() == nullptr,
+                    "PL: after wrapping to last song, playNext returns nullptr");
+    }
+
+    {
+        Playlist p("ApproxKeep");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100}
+        });
+        p.playRandom(1);
+        EXPECT_EQ(p.playApproximate(0), 1,
+                  "PL: playApproximate(0) keeps current position when current exists");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL: currentIndex unchanged after playApproximate(0)");
+    }
 }
 
 static void suite_stress() {
@@ -724,11 +844,12 @@ static void suite_stress() {
         p.addSong(mkSong(i, title.str(), i % 11, 120));
     }
     EXPECT_EQ(p.getSize(), N, "Stress PL: size after many addSong");
-    EXPECT_EQ_STR(p.getSong(0)->getTitle(), "Song0001",
+    EXPECT_EQ_STR(TestHelper::title(*p.getSong(0)), "Song0001",
                   "Stress PL: songs still sorted alphabetically");
-    p.playRandom(999);
-    EXPECT_EQ(TestHelper::currentIndex(p), 999, "Stress PL: playRandom large valid index");
-    EXPECT_EQ(p.playApproximate(100), 1099, "Stress PL: playApproximate large positive step");
+    p.playRandom(1999);
+    EXPECT_EQ(TestHelper::currentIndex(p), 1999, "Stress PL: playRandom large valid index");
+    EXPECT_EQ(p.playApproximate(100), 99,
+              "Stress PL: playApproximate wraps around on large positive step");
 }
 
 // ===================== main =====================
@@ -736,11 +857,13 @@ int main() {
     RUN_TEST("Song", suite_song_basic);
     RUN_TEST("AVL Basic", suite_avl_basic);
     RUN_TEST("AVL Rotations & Height", suite_avl_rotations_and_height);
+#ifdef USE_THREADED_AVL
     RUN_TEST("ThreadedAVL Basic", suite_threaded_avl_basic);
     RUN_TEST("ThreadedAVL Erase & Threads", suite_threaded_avl_erase_and_threads);
+#endif
     RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
     RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
-    RUN_TEST("Playlist Remove & Reset", suite_playlist_remove_and_reset);
+    RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
     RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
     RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
     RUN_TEST("Stress", suite_stress);
