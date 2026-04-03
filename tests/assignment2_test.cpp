@@ -661,6 +661,32 @@ static void suite_playlist_remove_current_behavior() {
     }
 }
 
+static void suite_playlist_remove_current_head() {
+    Playlist p("CurrentHead");
+    addSongs(p, {
+        {1, "Alpha", 1, 100},
+        {2, "Beta", 2, 100},
+        {3, "Charlie", 3, 100}
+    });
+
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1", "PL remove-head: start at first song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL remove-head: currentIndex = 0 before deletion");
+
+    p.removeSong(0); // remove current = Alpha, successor is Beta
+
+    EXPECT_EQ(p.getSize(), 2, "PL remove-head: size decreases after deleting current head");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL remove-head: currentIndex stays at successor index 0");
+
+#ifdef USE_THREADED_AVL
+    EXPECT_TRUE(TestHelper::hasCurrent(p), "PL remove-head: hasCurrent remains true");
+#endif
+
+    EXPECT_EQ_STR(song_brief(p.playPrevious()), "(null)",
+                  "PL remove-head: no previous before new first song");
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Charlie#3",
+                  "PL remove-head: playNext continues from successor");
+}
+
 static void suite_playlist_score_compare() {
     {
         Playlist p("Score");
@@ -815,6 +841,65 @@ static void suite_playlist_random_and_approximate() {
     }
 }
 
+static void suite_playlist_approximate_large_steps() {
+    Playlist p("ApproxLarge");
+    addSongs(p, {
+        {1, "A", 1, 100},
+        {2, "B", 2, 100},
+        {3, "C", 3, 100},
+        {4, "D", 4, 100},
+        {5, "E", 5, 100}
+    });
+
+    EXPECT_EQ(p.playApproximate(12), 2,
+              "PL approx: from no current, start at 0 then wrap +12 -> index 2");
+    EXPECT_EQ(TestHelper::currentIndex(p), 2,
+              "PL approx: currentIndex correct after large positive step");
+
+    EXPECT_EQ(p.playApproximate(-13), 4,
+              "PL approx: wrap correctly on large negative step");
+    EXPECT_EQ(TestHelper::currentIndex(p), 4,
+              "PL approx: currentIndex correct after large negative step");
+}
+
+static void suite_playlist_compare_edge_cases() {
+    {
+        Playlist p1("P1");
+        Playlist p2("P2");
+        addSongs(p1, {{1, "A", 5, 100}});
+        addSongs(p2, {{2, "B", 9, 100}});
+        EXPECT_TRUE(p1.compareTo(p2, 0),
+                    "PL compare: compare first 0 songs should be true (0 >= 0)");
+    }
+
+    {
+        Playlist p1("P1");
+        Playlist p2("P2");
+        addSongs(p1, {{1, "A", 5, 100}, {2, "B", 6, 100}});
+        addSongs(p2, {{3, "A", 5, 100}});
+        EXPECT_TRUE(p1.compareTo(p2, 10),
+                    "PL compare: numSong larger than size sums all available songs");
+    }
+
+    {
+        Playlist empty("Empty");
+        Playlist p("P");
+        addSongs(p, {{1, "A", 1, 100}});
+        EXPECT_TRUE(!empty.compareTo(p, 1),
+                    "PL compare: empty playlist is smaller than non-empty for first 1 song");
+    }
+}
+
+static void suite_playlist_duplicate_key() {
+    Playlist p("Dup");
+    p.addSong(mkSong(1, "Alpha", 5, 100));
+    p.addSong(mkSong(1, "Alpha", 9, 200)); // same title, same id => duplicate SongKey
+
+    EXPECT_EQ(p.getSize(), 1, "PL dup: duplicate SongKey should not increase size");
+    EXPECT_EQ_STR(song_brief(p.getSong(0)), "Alpha#1", "PL dup: original song remains");
+    EXPECT_TRUE(p.getSong(1) == nullptr, "PL dup: only one song stored");
+}
+
 static void suite_stress() {
     const int N = 2000;
 
@@ -874,8 +959,12 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
         RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
+        RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+        RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
+        RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
+        RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
         RUN_TEST("Stress", suite_stress);
     }
     else if (mode == "song") {
@@ -897,14 +986,18 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
         RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
+        RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+        RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
+        RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
+        RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
     }
     else if (mode == "stress") {
         RUN_TEST("Stress", suite_stress);
     }
 
-    // More detailed modes for debugging specific functionality.
+    // More detailed modes for debugging specific test suites.
     else if (mode == "avl-basic") {
         RUN_TEST("AVL Basic", suite_avl_basic);
     }
@@ -920,11 +1013,23 @@ int main(int argc, char* argv[]) {
     else if (mode == "playlist-remove-current") {
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
     }
+    else if (mode == "playlist-remove-head") {
+        RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
+    }
     else if (mode == "playlist-score") {
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
     }
     else if (mode == "playlist-jump") {
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+    }
+    else if (mode == "playlist-approx-large") {
+        RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
+    }
+    else if (mode == "playlist-compare-edge") {
+        RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
+    }
+    else if (mode == "playlist-dup") {
+        RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
     }
     else if (mode == "help") {
     cout << "Usage:\n";
@@ -945,8 +1050,12 @@ int main(int argc, char* argv[]) {
     cout << "  playlist-order\n";
     cout << "  playlist-nav\n";
     cout << "  playlist-remove-current\n";
+    cout << "  playlist-remove-head\n";
     cout << "  playlist-score\n";
     cout << "  playlist-jump\n\n";
+    cout << "  playlist-approx-large\n";
+    cout << "  playlist-compare-edge\n";
+    cout << "  playlist-dup\n\n";
 
     cout << "Notes:\n";
     cout << "  - test_basic uses AVL implementation\n";
