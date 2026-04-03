@@ -55,6 +55,7 @@ g++ -std=c++17 -DUSE_THREADED_AVL -I include tests/assignment2_test.cpp src/Play
 | `playlist` | Test Playlist functionality |
 | `stress`   | Run stress tests |
 | `threaded` | Test ThreadedAVL *(only for `test_threaded`)* |
+| `help`     | Show usage and available test modes |
 
 ### 🔹 Run specific test suites
 
