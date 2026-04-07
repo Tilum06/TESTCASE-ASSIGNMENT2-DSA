@@ -22,8 +22,18 @@ Song::Song(int id,
 {
 }
 
-string Song::toString() const {
-   return title + " by " + artist + " from " + album + " [" + to_string(duration) + "s, score: " + to_string(score) + "]";
+std::string Song::toString() const {
+    std::ostringstream oss;
+    oss << "Song[id=" << id 
+        << ", title=\"" << title << "\""
+        << ", artist=\"" << artist << "\""
+        << ", album=\"" << album << "\""
+        << ", duration=" << duration
+        << ", score=" << score
+        << ", url=\"" << url << "\""
+        << ", play_count=" << play_count
+        << "]";
+    return oss.str();
 }
 
 // TODO: Student can implement additional methods for Song here

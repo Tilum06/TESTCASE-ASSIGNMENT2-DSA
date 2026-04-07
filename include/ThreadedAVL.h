@@ -56,12 +56,12 @@ public:
     ~ThreadedAVL() override { this->clear(); }
 
     // TODO: These should traverse via threading (O(n) but very fast in practice)
-    std::list<K> ascendingList() override {
+    std::list<K> ascendingList() const override {
         // TODO
         return {};
     }
 
-    std::list<K> descendingList() override {
+    std::list<K> descendingList() const override {
         // TODO
         return {};
     }

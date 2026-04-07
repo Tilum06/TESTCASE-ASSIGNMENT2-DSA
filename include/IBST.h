@@ -20,8 +20,8 @@ public:
     virtual void clear() = 0;
     virtual int height() const = 0;
 
-    virtual std::list<K> ascendingList()=0;
-    virtual std::list<K> descendingList()=0;
+    virtual std::list<K> ascendingList() const = 0;
+    virtual std::list<K> descendingList() const = 0;
 
     virtual std::string toString(
         std::string (*entry2str)(const K&, const V&) = nullptr

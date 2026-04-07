@@ -5,6 +5,7 @@
 
 #include <list>
 #include <string>
+#include <sstream>
 
 template <typename K, typename V>
 class AVL : public IBST<K, V> {
@@ -23,6 +24,8 @@ public:
               pLeft(nullptr), pRight(nullptr) {}
 
         virtual ~Node() = default;
+
+        int balance() const { return bfactor; }
 
         // Default formatter must compile for any K,V.
         static std::string defaultEntry2Str(const K& k, const V& v) {
@@ -127,12 +130,12 @@ public:
         return 0;
     }
 
-    std::list<K> ascendingList() override {
+    std::list<K> ascendingList() const override {
         // TODO
         return {};
     }
 
-    std::list<K> descendingList() override {
+    std::list<K> descendingList() const override {
         // TODO
         return {};
     }

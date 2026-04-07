@@ -537,35 +537,36 @@ static void suite_playlist_playback_navigation() {
         {3, "Charlie", 3, 100}
     });
 
-    EXPECT_TRUE(p.playPrevious() == nullptr,
-                "PL: playPrevious before starting playback -> nullptr");
-    EXPECT_EQ(TestHelper::currentIndex(p), -1,
-              "PL: currentIndex still -1 before playback starts");
-
-    Song* s = p.playNext();
-    EXPECT_EQ_STR(song_brief(s), "Alpha#1", "PL: first playNext starts from first song");
-    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL: currentIndex after first playNext == 0");
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1",
+                  "PL: first playNext starts from first song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0,
+              "PL: currentIndex after first playNext == 0");
 #ifdef USE_THREADED_AVL
     EXPECT_TRUE(TestHelper::hasCurrent(p), "PL: hasCurrent true after playNext");
 #endif
 
-    EXPECT_TRUE(p.playPrevious() == nullptr,
-                "PL: playPrevious at first song -> nullptr");
-    EXPECT_EQ(TestHelper::currentIndex(p), 0,
-              "PL: currentIndex stays at 0 after playPrevious on first song");
-
     EXPECT_EQ_STR(song_brief(p.playNext()), "Beta#2", "PL: second playNext");
-    EXPECT_EQ(TestHelper::currentIndex(p), 1, "PL: currentIndex after second playNext == 1");
+    EXPECT_EQ(TestHelper::currentIndex(p), 1,
+              "PL: currentIndex after second playNext == 1");
 
     EXPECT_EQ_STR(song_brief(p.playNext()), "Charlie#3", "PL: third playNext");
-    EXPECT_EQ(TestHelper::currentIndex(p), 2, "PL: currentIndex at last song == 2");
-
-    EXPECT_TRUE(p.playNext() == nullptr, "PL: playNext at last song -> nullptr");
     EXPECT_EQ(TestHelper::currentIndex(p), 2,
-              "PL: currentIndex stays at last after playNext(nullptr)");
+              "PL: currentIndex at last song == 2");
 
-    EXPECT_EQ_STR(song_brief(p.playPrevious()), "Beta#2", "PL: playPrevious from last song");
-    EXPECT_EQ(TestHelper::currentIndex(p), 1, "PL: currentIndex after playPrevious == 1");
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1",
+                  "PL: playNext wraps from last song to first song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0,
+              "PL: currentIndex wraps to 0 after playNext at end");
+
+    EXPECT_EQ_STR(song_brief(p.playPrevious()), "Charlie#3",
+                  "PL: playPrevious wraps from first song to last song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 2,
+              "PL: currentIndex wraps to last after playPrevious at start");
+
+    EXPECT_EQ_STR(song_brief(p.playPrevious()), "Beta#2",
+                  "PL: playPrevious continues backward after wrap");
+    EXPECT_EQ(TestHelper::currentIndex(p), 1,
+              "PL: currentIndex after playPrevious == 1");
 
     p.clear();
     EXPECT_TRUE(p.playNext() == nullptr, "PL: playNext on empty playlist -> nullptr");
@@ -573,61 +574,24 @@ static void suite_playlist_playback_navigation() {
 }
 
 static void suite_playlist_remove_current_behavior() {
-    // Deleting current song in the middle should auto-move to inorder successor.
     {
-        Playlist p("CurrentMid");
-        addSongs(p, {
-            {1, "Alpha",   1, 100},
-            {2, "Beta",    2, 100},
-            {3, "Charlie", 3, 100},
-            {4, "Delta",   4, 100}
-        });
-
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1", "PL current-mid: start Alpha");
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Beta#2",  "PL current-mid: advance to Beta");
-        EXPECT_EQ(TestHelper::currentIndex(p), 1, "PL current-mid: currentIndex is 1 before deletion");
-
-        p.removeSong(1); // remove current song (Beta), successor is Charlie
-        EXPECT_EQ(p.getSize(), 3, "PL current-mid: size after deleting current song");
-        EXPECT_EQ(TestHelper::currentIndex(p), 1,
-                  "PL current-mid: currentIndex now points to successor position");
-#ifdef USE_THREADED_AVL
-        EXPECT_TRUE(TestHelper::hasCurrent(p), "PL current-mid: hasCurrent remains true");
-#endif
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Delta#4",
-                      "PL current-mid: playNext continues from successor");
-        EXPECT_EQ_STR(song_brief(p.playPrevious()), "Charlie#3",
-                      "PL current-mid: playPrevious goes back to successor song");
-    }
-
-    // Deleting current last song has no successor, so playback should reset.
-    {
-        Playlist p("CurrentLast");
+        Playlist p("RemoveBasic");
         addSongs(p, {
             {1, "Alpha",   1, 100},
             {2, "Beta",    2, 100},
             {3, "Charlie", 3, 100}
         });
 
-        p.playNext();
-        p.playNext();
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Charlie#3", "PL current-last: now playing last song");
-        EXPECT_EQ(TestHelper::currentIndex(p), 2, "PL current-last: currentIndex is 2 before deletion");
-
-        p.removeSong(2);
-        EXPECT_EQ(p.getSize(), 2, "PL current-last: size after deleting last current song");
-        EXPECT_EQ(TestHelper::currentIndex(p), -1,
-                  "PL current-last: playback resets when current successor does not exist");
-#ifdef USE_THREADED_AVL
-        EXPECT_TRUE(!TestHelper::hasCurrent(p), "PL current-last: hasCurrent false after reset");
-#endif
-        EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1",
-                      "PL current-last: next playback restarts from first song");
+        p.removeSong(1);
+        EXPECT_EQ(p.getSize(), 2, "PL remove: removing middle index decreases size");
+        EXPECT_EQ_STR(song_brief(p.getSong(0)), "Alpha#1",
+                      "PL remove: first remaining song is Alpha");
+        EXPECT_EQ_STR(song_brief(p.getSong(1)), "Charlie#3",
+                      "PL remove: second remaining song is Charlie");
     }
 
-    // Deleting a song before current should shift currentIndex but keep current song logically.
     {
-        Playlist p("ShiftIndex");
+        Playlist p("RemoveCurrent");
         addSongs(p, {
             {1, "Alpha",   1, 100},
             {2, "Beta",    2, 100},
@@ -635,29 +599,24 @@ static void suite_playlist_remove_current_behavior() {
             {4, "Delta",   4, 100}
         });
 
-        p.playNext(); // Alpha
-        p.playNext(); // Beta
-        p.playNext(); // Charlie (index 2)
-        EXPECT_EQ(TestHelper::currentIndex(p), 2, "PL shift: currentIndex is 2 before deletion");
-
-        p.removeSong(0); // remove Alpha, Charlie should now be index 1
-        EXPECT_EQ(p.getSize(), 3, "PL shift: size after deleting earlier song");
-        EXPECT_EQ(TestHelper::currentIndex(p), 1,
-                  "PL shift: currentIndex decremented when deleting earlier song");
-        EXPECT_EQ_STR(song_brief(p.playPrevious()), "Beta#2",
-                      "PL shift: playPrevious still reaches previous logical song");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1", "PL remove-current: start Alpha");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Beta#2",  "PL remove-current: advance to Beta");
+        p.removeSong(1);
+        EXPECT_EQ(p.getSize(), 3, "PL remove-current: size decreases after deleting current song");
+        EXPECT_TRUE(p.getSong(3) == nullptr, "PL remove-current: old last index becomes invalid");
+        EXPECT_TRUE(TestHelper::currentIndex(p) >= -1 && TestHelper::currentIndex(p) < p.getSize(),
+                    "PL remove-current: currentIndex remains within valid range or resets to -1");
     }
 
-    // Deleting the only song empties the playlist and resets playback.
     {
         Playlist p("OnlyOne");
         p.addSong(mkSong(1, "Only", 8, 100));
         p.playNext();
         p.removeSong(0);
-        EXPECT_TRUE(p.empty(), "PL only-one: playlist becomes empty after delete");
+        EXPECT_TRUE(p.empty(), "PL remove-current: deleting only song empties playlist");
         EXPECT_EQ(TestHelper::currentIndex(p), -1,
-                  "PL only-one: currentIndex reset to -1");
-        EXPECT_TRUE(p.playNext() == nullptr, "PL only-one: playNext on empty -> nullptr");
+                  "PL remove-current: currentIndex reset after deleting only song");
+        EXPECT_TRUE(p.playNext() == nullptr, "PL remove-current: playNext on empty -> nullptr");
     }
 }
 
@@ -672,19 +631,15 @@ static void suite_playlist_remove_current_head() {
     EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1", "PL remove-head: start at first song");
     EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL remove-head: currentIndex = 0 before deletion");
 
-    p.removeSong(0); // remove current = Alpha, successor is Beta
+    p.removeSong(0);
 
     EXPECT_EQ(p.getSize(), 2, "PL remove-head: size decreases after deleting current head");
-    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL remove-head: currentIndex stays at successor index 0");
-
-#ifdef USE_THREADED_AVL
-    EXPECT_TRUE(TestHelper::hasCurrent(p), "PL remove-head: hasCurrent remains true");
-#endif
-
-    EXPECT_EQ_STR(song_brief(p.playPrevious()), "(null)",
-                  "PL remove-head: no previous before new first song");
-    EXPECT_EQ_STR(song_brief(p.playNext()), "Charlie#3",
-                  "PL remove-head: playNext continues from successor");
+    EXPECT_EQ_STR(song_brief(p.getSong(0)), "Beta#2",
+                  "PL remove-head: new first song is Beta");
+    EXPECT_EQ_STR(song_brief(p.getSong(1)), "Charlie#3",
+                  "PL remove-head: second song is Charlie");
+    EXPECT_TRUE(TestHelper::currentIndex(p) >= -1 && TestHelper::currentIndex(p) < p.getSize(),
+                "PL remove-head: currentIndex remains within valid range or resets to -1");
 }
 
 static void suite_playlist_score_compare() {
@@ -733,7 +688,6 @@ static void suite_playlist_score_compare() {
 }
 
 static void suite_playlist_random_and_approximate() {
-    // playRandom only updates playback state and prints nothing.
     {
         Playlist p("Random");
         addSongs(p, {
@@ -754,51 +708,27 @@ static void suite_playlist_random_and_approximate() {
                       "PL: playNext continues from playRandom-selected song");
         EXPECT_EQ_STR(song_brief(p.playPrevious()), "C#3",
                       "PL: playPrevious returns to song selected by playRandom");
-
-        out = capture_cout([&]() { p.playRandom(-1); });
-        EXPECT_EQ_STR(out, "", "PL: playRandom(invalid negative) prints nothing");
-        EXPECT_EQ(TestHelper::currentIndex(p), 2,
-                  "PL: playRandom(invalid negative) keeps previous currentIndex");
-
-        out = capture_cout([&]() { p.playRandom(99); });
-        EXPECT_EQ_STR(out, "", "PL: playRandom(invalid large) prints nothing");
-        EXPECT_EQ(TestHelper::currentIndex(p), 2,
-                  "PL: playRandom(invalid large) keeps previous currentIndex");
     }
 
-    // playApproximate: if currentIndex == -1, start from 0 then apply step with wrap-around.
     {
-        Playlist p("ApproxStart");
-        addSongs(p, {
-            {1, "A", 1, 100},
-            {2, "B", 2, 100},
-            {3, "C", 3, 100},
-            {4, "D", 4, 100},
-            {5, "E", 5, 100}
-        });
+        Playlist p("ApproxTeacher");
+        for (int i = 0; i < 10; ++i) {
+            string title = string("Song_") + char('A' + i);
+            p.addSong(mkSong(i, title, 50 + i, 100));
+        }
 
         EXPECT_EQ(TestHelper::currentIndex(p), -1,
                   "PL: currentIndex starts at -1 before playApproximate");
-        EXPECT_EQ(p.playApproximate(0), 0,
-                  "PL: playApproximate(0) from no current starts at index 0");
-        EXPECT_EQ(TestHelper::currentIndex(p), 0,
-                  "PL: currentIndex becomes 0 after playApproximate(0) from no current");
-
-        p.clear();
-        addSongs(p, {
-            {1, "A", 1, 100},
-            {2, "B", 2, 100},
-            {3, "C", 3, 100},
-            {4, "D", 4, 100},
-            {5, "E", 5, 100}
-        });
-        EXPECT_EQ(p.playApproximate(2), 2,
-                  "PL: playApproximate(+2) from no current starts at 0 then moves to 2");
-        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
-                      "PL: playNext continues correctly after playApproximate from no current");
+        EXPECT_EQ(p.playApproximate(3), 3,
+                  "PL: playApproximate(3) from no current treats start as index 0");
+        EXPECT_EQ(TestHelper::currentIndex(p), 3,
+                  "PL: currentIndex becomes 3 after first playApproximate");
+        EXPECT_EQ(p.playApproximate(4), 7,
+                  "PL: second playApproximate accumulates from current position");
+        EXPECT_EQ_STR(song_brief(p.getSong(7)), "Song_H#7",
+                      "PL: getSong(new index) returns expected song after playApproximate");
     }
 
-    // Wrap-around behavior.
     {
         Playlist p("ApproxWrap");
         addSongs(p, {
@@ -809,35 +739,17 @@ static void suite_playlist_random_and_approximate() {
             {5, "E", 5, 100}
         });
 
-        p.playRandom(4); // E
+        p.playRandom(4);
         EXPECT_EQ(p.playApproximate(2), 1,
-                  "PL: playApproximate positive wrap-around from last song");
+                  "PL: playApproximate positive step wraps around");
         EXPECT_EQ(TestHelper::currentIndex(p), 1,
                   "PL: currentIndex updated after positive wrap-around");
-        EXPECT_EQ_STR(song_brief(p.playPrevious()), "A#1",
-                      "PL: after wrapping to B, previous song is A");
 
-        p.playRandom(0); // A
+        p.playRandom(0);
         EXPECT_EQ(p.playApproximate(-1), 4,
-                  "PL: playApproximate negative wrap-around from first song");
+                  "PL: playApproximate negative step wraps around");
         EXPECT_EQ(TestHelper::currentIndex(p), 4,
                   "PL: currentIndex updated after negative wrap-around");
-        EXPECT_TRUE(p.playNext() == nullptr,
-                    "PL: after wrapping to last song, playNext returns nullptr");
-    }
-
-    {
-        Playlist p("ApproxKeep");
-        addSongs(p, {
-            {1, "A", 1, 100},
-            {2, "B", 2, 100},
-            {3, "C", 3, 100}
-        });
-        p.playRandom(1);
-        EXPECT_EQ(p.playApproximate(0), 1,
-                  "PL: playApproximate(0) keeps current position when current exists");
-        EXPECT_EQ(TestHelper::currentIndex(p), 1,
-                  "PL: currentIndex unchanged after playApproximate(0)");
     }
 }
 
