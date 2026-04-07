@@ -642,6 +642,78 @@ static void suite_playlist_remove_current_head() {
                 "PL remove-head: currentIndex remains within valid range or resets to -1");
 }
 
+static void suite_playlist_qa_navigation_strict() {
+    Playlist p("QA Nav");
+    addSongs(p, {
+        {1, "Alpha",   1, 100},
+        {2, "Beta",    2, 100},
+        {3, "Charlie", 3, 100}
+    });
+
+    EXPECT_EQ_STR(song_brief(p.playPrevious()), "Charlie#3",
+                  "PL QA: playPrevious from no current jumps to last song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 2,
+              "PL QA: currentIndex becomes last index after playPrevious from -1");
+
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Alpha#1",
+                  "PL QA: playNext wraps from last song to first song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0,
+              "PL QA: currentIndex wraps to 0 after playNext from last");
+
+    EXPECT_EQ_STR(song_brief(p.playPrevious()), "Charlie#3",
+                  "PL QA: playPrevious wraps from first song to last song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 2,
+              "PL QA: currentIndex wraps to last after playPrevious from first");
+}
+
+static void suite_playlist_qa_remove_current_successor() {
+    {
+        Playlist p("QA Remove Mid");
+        addSongs(p, {
+            {1, "Alpha",   1, 100},
+            {2, "Beta",    2, 100},
+            {3, "Charlie", 3, 100},
+            {4, "Delta",   4, 100}
+        });
+
+        p.playNext(); // Alpha
+        p.playNext(); // Beta
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL QA remove: currentIndex is middle song before deletion");
+
+        p.removeSong(1); // delete current = Beta, should move to Charlie
+        EXPECT_EQ(p.getSize(), 3, "PL QA remove: size decreases after deleting current middle song");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL QA remove: currentIndex stays at successor position after deleting current middle song");
+        EXPECT_EQ_STR(song_brief(p.playPrevious()), "Alpha#1",
+                      "PL QA remove: playPrevious from successor goes to predecessor");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Charlie#3",
+                      "PL QA remove: playNext returns to successor song after moving back");
+    }
+
+    {
+        Playlist p("QA Remove Last");
+        addSongs(p, {
+            {1, "Alpha",   1, 100},
+            {2, "Beta",    2, 100},
+            {3, "Charlie", 3, 100}
+        });
+
+        p.playPrevious(); // Charlie
+        EXPECT_EQ(TestHelper::currentIndex(p), 2,
+                  "PL QA remove-last: currentIndex is last before deletion");
+        p.removeSong(2); // delete current last, should wrap current to index 0 if still non-empty
+        EXPECT_EQ(p.getSize(), 2, "PL QA remove-last: size decreases after deleting current last song");
+        EXPECT_EQ(TestHelper::currentIndex(p), 0,
+                  "PL QA remove-last: currentIndex becomes 0 after deleting current last song");
+        EXPECT_EQ_STR(song_brief(p.getSong(0)), "Alpha#1",
+                      "PL QA remove-last: first remaining song is Alpha");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "Beta#2",
+                      "PL QA remove-last: playback continues from wrapped current position");
+    }
+}
+
+
 static void suite_playlist_score_compare() {
     {
         Playlist p("Score");
@@ -750,6 +822,56 @@ static void suite_playlist_random_and_approximate() {
                   "PL: playApproximate negative step wraps around");
         EXPECT_EQ(TestHelper::currentIndex(p), 4,
                   "PL: currentIndex updated after negative wrap-around");
+    }
+}
+
+static void suite_playlist_qa_random_approximate_strict() {
+    {
+        Playlist p("QA Random Invalid");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100}
+        });
+
+        p.playRandom(1);
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL QA random: valid playRandom sets currentIndex");
+        string out = capture_cout([&]() { p.playRandom(-1); });
+        EXPECT_EQ_STR(out, "", "PL QA random: invalid negative playRandom prints nothing");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL QA random: invalid negative playRandom keeps currentIndex unchanged");
+
+        out = capture_cout([&]() { p.playRandom(99); });
+        EXPECT_EQ_STR(out, "", "PL QA random: invalid large playRandom prints nothing");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL QA random: invalid large playRandom keeps currentIndex unchanged");
+    }
+
+    {
+        Playlist p("QA Approx Strict");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100},
+            {5, "E", 5, 100}
+        });
+
+        EXPECT_EQ(p.playApproximate(0), 0,
+                  "PL QA approx: from no current, step 0 starts at index 0");
+        EXPECT_EQ(TestHelper::currentIndex(p), 0,
+                  "PL QA approx: currentIndex becomes 0 after step 0 from no current");
+
+        EXPECT_EQ(p.playApproximate(-1), 4,
+                  "PL QA approx: from first song, step -1 wraps to last index");
+        EXPECT_EQ(TestHelper::currentIndex(p), 4,
+                  "PL QA approx: currentIndex becomes last after negative wrap");
+
+        EXPECT_EQ(p.playApproximate(6), 0,
+                  "PL QA approx: large positive step uses circular behavior");
+        EXPECT_EQ(TestHelper::currentIndex(p), 0,
+                  "PL QA approx: currentIndex updated after large positive circular step");
     }
 }
 
@@ -872,8 +994,11 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
+        RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
+        RUN_TEST("Playlist QA Remove Current Successor", suite_playlist_qa_remove_current_successor);
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+        RUN_TEST("Playlist QA Random & Approximate Strict", suite_playlist_qa_random_approximate_strict);
         RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
         RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
         RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
@@ -899,8 +1024,11 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
+        RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
+        RUN_TEST("Playlist QA Remove Current Successor", suite_playlist_qa_remove_current_successor);
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+        RUN_TEST("Playlist QA Random & Approximate Strict", suite_playlist_qa_random_approximate_strict);
         RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
         RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
         RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
@@ -928,11 +1056,20 @@ int main(int argc, char* argv[]) {
     else if (mode == "playlist-remove-head") {
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
     }
+    else if (mode == "playlist-qa-nav") {
+        RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
+    }
+    else if (mode == "playlist-qa-remove") {
+        RUN_TEST("Playlist QA Remove Current Successor", suite_playlist_qa_remove_current_successor);
+    }
     else if (mode == "playlist-score") {
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
     }
     else if (mode == "playlist-jump") {
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
+    }
+    else if (mode == "playlist-qa-jump") {
+        RUN_TEST("Playlist QA Random & Approximate Strict", suite_playlist_qa_random_approximate_strict);
     }
     else if (mode == "playlist-approx-large") {
         RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
