@@ -573,6 +573,20 @@ static void suite_playlist_playback_navigation() {
     EXPECT_TRUE(p.playPrevious() == nullptr, "PL: playPrevious on empty playlist -> nullptr");
 }
 
+static void suite_playlist_single_song_wrap() {
+    Playlist p("One");
+    p.addSong(mkSong(1, "Only", 8, 100));
+
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Only#1", "PL single: first playNext plays only song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL single: currentIndex = 0");
+
+    EXPECT_EQ_STR(song_brief(p.playNext()), "Only#1", "PL single: playNext wraps to itself");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL single: currentIndex remains 0 after playNext");
+
+    EXPECT_EQ_STR(song_brief(p.playPrevious()), "Only#1", "PL single: playPrevious wraps to itself");
+    EXPECT_EQ(TestHelper::currentIndex(p), 0, "PL single: currentIndex remains 0 after playPrevious");
+}
+
 static void suite_playlist_remove_current_behavior() {
     {
         Playlist p("RemoveBasic");
@@ -1135,6 +1149,7 @@ int main(int argc, char* argv[]) {
     #endif
         RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
         RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
+        RUN_TEST("Playlist Single Song Wrap", suite_playlist_single_song_wrap);
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
         RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
@@ -1166,6 +1181,7 @@ int main(int argc, char* argv[]) {
     else if (mode == "playlist") {
         RUN_TEST("Playlist Basic Order", suite_playlist_basic_order);
         RUN_TEST("Playlist Playback Navigation", suite_playlist_playback_navigation);
+        RUN_TEST("Playlist Single Song Wrap", suite_playlist_single_song_wrap);
         RUN_TEST("Playlist Remove Current Behavior", suite_playlist_remove_current_behavior);
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
         RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
