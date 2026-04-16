@@ -20,7 +20,7 @@ Replace the provided files with your implementation:
 
 ### Basic AVL mode
 ```bash
-g++ -std=c++17 -I . include tests/assignment2_test.cpp src/Playlist.cpp -o test_basic
+g++ -std=c++17 -I include tests/assignment2_test.cpp src/Playlist.cpp -o test_basic
 ```
 
 ### Threaded mode (bonus):

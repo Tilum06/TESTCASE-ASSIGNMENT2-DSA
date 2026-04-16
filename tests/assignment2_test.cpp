@@ -934,6 +934,149 @@ static void suite_playlist_duplicate_key() {
     EXPECT_TRUE(p.getSong(1) == nullptr, "PL dup: only one song stored");
 }
 
+static void suite_playlist_current_song_stability() {
+    {
+        Playlist p("InsertBeforeCurrent");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100}
+        });
+
+        EXPECT_EQ_STR(song_brief(p.playNext()), "A#1", "PL current-stability insert-before: start A");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "C#3", "PL current-stability insert-before: current is C");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL current-stability insert-before: currentIndex before insert");
+
+        p.addSong(mkSong(2, "B", 2, 100)); // order: A, B, C, D
+
+        EXPECT_EQ(p.getSize(), 4, "PL current-stability insert-before: size increases after insert");
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "C#3",
+                      "PL current-stability insert-before: current song remains C after inserting before it");
+        EXPECT_EQ(TestHelper::currentIndex(p), 2,
+                  "PL current-stability insert-before: currentIndex shifts right to keep same current song");
+
+        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
+                      "PL current-stability insert-before: playNext continues from the same current song");
+        EXPECT_EQ_STR(song_brief(p.playPrevious()), "C#3",
+                      "PL current-stability insert-before: playPrevious returns to preserved current song");
+    }
+
+    {
+        Playlist p("InsertAfterCurrent");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100}
+        });
+
+        p.playNext(); // A
+        p.playNext(); // C
+
+        p.addSong(mkSong(5, "E", 5, 100)); // order: A, C, D, E
+
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "C#3",
+                      "PL current-stability insert-after: current song remains C after inserting after it");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL current-stability insert-after: currentIndex unchanged when inserting after current");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
+                      "PL current-stability insert-after: playNext still goes to original successor");
+    }
+
+    {
+        Playlist p("RemoveBeforeCurrent");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100}
+        });
+
+        p.playNext(); // A
+        p.playNext(); // B
+        p.playNext(); // C
+
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "C#3",
+                      "PL current-stability remove-before: current song initially C");
+
+        p.removeSong(1); // remove B, order: A, C, D
+
+        EXPECT_EQ(p.getSize(), 3, "PL current-stability remove-before: size decreases");
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "C#3",
+                      "PL current-stability remove-before: current song remains C after deleting before it");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL current-stability remove-before: currentIndex shifts left to keep same current song");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
+                      "PL current-stability remove-before: playNext continues correctly after preserved current");
+    }
+
+    {
+        Playlist p("RemoveAfterCurrent");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100}
+        });
+
+        p.playNext(); // A
+        p.playNext(); // B
+
+        p.removeSong(2); // remove C, order: A, B, D
+
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "B#2",
+                      "PL current-stability remove-after: current song remains B after deleting after it");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL current-stability remove-after: currentIndex unchanged when deleting after current");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "D#4",
+                      "PL current-stability remove-after: playNext skips removed song and goes to D");
+    }
+
+    {
+        Playlist p("RemoveCurrentMiddle");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100},
+            {4, "D", 4, 100}
+        });
+
+        p.playNext(); // A
+        p.playNext(); // B
+
+        p.removeSong(1); // remove current B, should move current to successor C
+
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "C#3",
+                      "PL current-stability remove-current-middle: current becomes successor C");
+        EXPECT_EQ(TestHelper::currentIndex(p), 1,
+                  "PL current-stability remove-current-middle: currentIndex points to successor position");
+        EXPECT_EQ_STR(song_brief(p.playPrevious()), "A#1",
+                      "PL current-stability remove-current-middle: playPrevious from new current goes to A");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "C#3",
+                      "PL current-stability remove-current-middle: playNext returns to new current C");
+    }
+
+    {
+        Playlist p("RemoveCurrentLast");
+        addSongs(p, {
+            {1, "A", 1, 100},
+            {2, "B", 2, 100},
+            {3, "C", 3, 100}
+        });
+
+        p.playPrevious(); // C
+
+        p.removeSong(2); // remove current last, should wrap current to first A
+
+        EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "A#1",
+                      "PL current-stability remove-current-last: current becomes first song after deleting last current");
+        EXPECT_EQ(TestHelper::currentIndex(p), 0,
+                  "PL current-stability remove-current-last: currentIndex becomes 0");
+        EXPECT_EQ_STR(song_brief(p.playNext()), "B#2",
+                      "PL current-stability remove-current-last: playNext continues from wrapped current");
+    }
+}
+
 static void suite_stress() {
     const int N = 2000;
 
@@ -1002,6 +1145,7 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
         RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
         RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
+        RUN_TEST("Playlist Current Song Stability", suite_playlist_current_song_stability);
         RUN_TEST("Stress", suite_stress);
     }
     else if (mode == "song") {
@@ -1032,6 +1176,7 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Approximate Large Steps", suite_playlist_approximate_large_steps);
         RUN_TEST("Playlist Compare Edge Cases", suite_playlist_compare_edge_cases);
         RUN_TEST("Playlist Duplicate Key", suite_playlist_duplicate_key);
+        RUN_TEST("Playlist Current Song Stability", suite_playlist_current_song_stability);
     }
     else if (mode == "stress") {
         RUN_TEST("Stress", suite_stress);
