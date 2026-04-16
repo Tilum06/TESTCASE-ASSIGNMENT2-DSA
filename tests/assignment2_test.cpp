@@ -727,6 +727,28 @@ static void suite_playlist_qa_remove_current_successor() {
     }
 }
 
+static void suite_playlist_threaded_hasCurrent_after_remove_current() {
+#ifdef USE_THREADED_AVL
+    Playlist p("HasCurrent");
+    addSongs(p, {
+        {1, "A", 1, 100},
+        {2, "B", 2, 100},
+        {3, "C", 3, 100}
+    });
+
+    p.playNext(); // A
+    p.playNext(); // B
+    p.removeSong(1); // remove current B -> should move to C
+
+    EXPECT_TRUE(TestHelper::hasCurrent(p),
+                "PL threaded: hasCurrent remains true after deleting current middle song");
+    EXPECT_EQ(TestHelper::currentIndex(p), 1,
+              "PL threaded: currentIndex points to successor after deleting current");
+    EXPECT_EQ_STR(song_brief(p.getSong(TestHelper::currentIndex(p))), "C#3",
+                  "PL threaded: current song becomes successor");
+#endif
+}
+
 
 static void suite_playlist_score_compare() {
     {
@@ -1154,6 +1176,10 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
         RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
         RUN_TEST("Playlist QA Remove Current Successor", suite_playlist_qa_remove_current_successor);
+    #ifdef USE_THREADED_AVL
+        RUN_TEST("Playlist Threaded hasCurrent After Remove Current",
+                 suite_playlist_threaded_hasCurrent_after_remove_current);
+    #endif
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
         RUN_TEST("Playlist QA Random & Approximate Strict", suite_playlist_qa_random_approximate_strict);
@@ -1186,6 +1212,10 @@ int main(int argc, char* argv[]) {
         RUN_TEST("Playlist Remove Current Head", suite_playlist_remove_current_head);
         RUN_TEST("Playlist QA Navigation Strict", suite_playlist_qa_navigation_strict);
         RUN_TEST("Playlist QA Remove Current Successor", suite_playlist_qa_remove_current_successor);
+    #ifdef USE_THREADED_AVL
+        RUN_TEST("Playlist Threaded hasCurrent After Remove Current",
+                 suite_playlist_threaded_hasCurrent_after_remove_current);
+    #endif
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
         RUN_TEST("Playlist Random & Approximate", suite_playlist_random_and_approximate);
         RUN_TEST("Playlist QA Random & Approximate Strict", suite_playlist_qa_random_approximate_strict);
@@ -1222,6 +1252,12 @@ int main(int argc, char* argv[]) {
     }
     else if (mode == "playlist-qa-remove") {
         RUN_TEST("Playlist QA Remove Current Successor", suite_playlist_qa_remove_current_successor);
+    }
+    else if (mode == "playlist-threaded-hascurrent") {
+    #ifdef USE_THREADED_AVL
+        RUN_TEST("Playlist Threaded hasCurrent After Remove Current",
+                 suite_playlist_threaded_hasCurrent_after_remove_current);
+    #endif
     }
     else if (mode == "playlist-score") {
         RUN_TEST("Playlist Score & Compare", suite_playlist_score_compare);
